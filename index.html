@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Facing Skenes</title>
+<link href="https://fonts.googleapis.com/css2?family=Bowlby+One+SC&family=Oswald:wght@300;400;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --gold: #fdb827;
+    --gold-dim: #8a6210;
+    --cream: #f4ead5;
+    --black: #0a0a0a;
+    --red: #c0392b;
+    --green: #6ec46e;
+    --dirt: #2a1d10;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; position: fixed; width: 100%; }
+  body {
+    background: var(--black);
+    color: var(--cream);
+    font-family: 'Oswald', sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: radial-gradient(rgba(244,234,213,0.035) 1px, transparent 1px);
+    background-size: 3px 3px;
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  #game {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    padding: 10px 14px 8px;
+    border-bottom: 2px solid var(--gold-dim);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-shrink: 0;
+  }
+  .title {
+    font-family: 'Bowlby One SC', serif;
+    font-size: 18px;
+    letter-spacing: 0.5px;
+    color: var(--gold);
+    line-height: 0.95;
+  }
+  .title small {
+    display: block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--cream);
+    letter-spacing: 2.5px;
+    margin-top: 3px;
+    opacity: 0.7;
+  }
+  .scoreboard {
+    text-align: right;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    line-height: 1.5;
+    opacity: 0.85;
+  }
+  .scoreboard .line { display: flex; gap: 8px; justify-content: flex-end; }
+  .scoreboard .label { color: var(--gold-dim); }
+  .scoreboard .val { color: var(--cream); min-width: 22px; text-align: right; }
+
+  .field {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background:
+      radial-gradient(ellipse at 50% 35%, #1a1206 0%, #0a0a0a 70%),
+      var(--black);
+  }
+
+  .mound {
+    position: absolute;
+    top: 16%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 70%;
+    height: 8%;
+    background: radial-gradient(ellipse at center top, var(--dirt) 0%, transparent 75%);
+    opacity: 0.55;
+  }
+  .pitcher {
+    position: absolute;
+    top: 6%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90px;
+    height: 110px;
+    z-index: 2;
+  }
+  .pitcher svg { width: 100%; height: 100%; display: block; }
+
+  /* strike zone — also serves as guess input */
+  .zone-wrap {
+    position: absolute;
+    bottom: 22%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(280px, 70vw);
+    aspect-ratio: 3 / 4;
+    z-index: 4;
+  }
+  .zone-grid {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    border: 1.5px solid rgba(253,184,39,0.45);
+  }
+  .cell {
+    border: 0.5px solid rgba(253,184,39,0.15);
+    cursor: pointer;
+    transition: background 0.1s;
+    position: relative;
+  }
+  .cell.guess-active {
+    background: rgba(253,184,39,0.22);
+    box-shadow: inset 0 0 0 1.5px var(--gold);
+  }
+  .cell.guess-active::after {
+    content: '✕';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--gold);
+    font-size: 18px;
+    font-weight: 700;
+    opacity: 0.7;
+  }
+
+  /* outside-zone halo (chase area visualization, decorative) */
+  .zone-halo {
+    position: absolute;
+    inset: -30%;
+    border: 1px dashed rgba(253,184,39,0.1);
+    pointer-events: none;
+  }
+
+  /* home plate */
+  .plate {
+    position: absolute;
+    bottom: 15%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(300px, 75vw);
+    height: 16px;
+    background: var(--cream);
+    clip-path: polygon(15% 0, 85% 0, 100% 50%, 50% 100%, 0 50%);
+    opacity: 0.85;
+    z-index: 1;
+  }
+
+  .ball {
+    position: absolute;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #ffffff 0%, #f0e4cc 50%, #b8a888 100%);
+    box-shadow:
+      0 0 6px rgba(255,255,255,0.5),
+      inset -2px -2px 3px rgba(0,0,0,0.25);
+    opacity: 0;
+    z-index: 5;
+    pointer-events: none;
+    will-change: transform;
+  }
+
+  /* Ball motion trail — faded ghost copies */
+  .ball-trail {
+    position: absolute;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.8) 0%, rgba(240,228,204,0.4) 50%, rgba(184,168,136,0.1) 100%);
+    opacity: 0;
+    z-index: 4;
+    pointer-events: none;
+    will-change: transform, opacity;
+    filter: blur(1.5px);
+  }
+
+  /* Camera shake on release */
+  @keyframes camShake {
+    0%   { transform: translate(0, 0); }
+    20%  { transform: translate(-1px, 1px); }
+    40%  { transform: translate(2px, -1px); }
+    60%  { transform: translate(-2px, -1px); }
+    80%  { transform: translate(1px, 2px); }
+    100% { transform: translate(0, 0); }
+  }
+  .field.shake { animation: camShake 140ms ease-out; }
+
+  /* Catcher + umpire silhouette behind plate for depth */
+  .backstop {
+    position: absolute;
+    bottom: 3%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(280px, 70vw);
+    height: 110px;
+    z-index: 3;
+    pointer-events: none;
+    opacity: 0.92;
+  }
+  .backstop svg { width: 100%; height: 100%; display: block; }
+
+  /* actual location marker shown post-pitch */
+  .actual-marker {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2.5px solid var(--red);
+    background: rgba(192, 57, 43, 0.3);
+    transform: translate(-50%, -50%);
+    z-index: 6;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .actual-marker.show { opacity: 1; }
+
+  .reveal {
+    position: absolute;
+    top: 5%;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    font-family: 'Bowlby One SC', serif;
+    color: var(--gold);
+    text-shadow: 2px 2px 0 var(--black);
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 10;
+    pointer-events: none;
+    width: 90%;
+    max-width: 360px;
+  }
+  .reveal.show { opacity: 1; }
+  .reveal .type { font-size: 22px; letter-spacing: 1.5px; }
+  .reveal .velo {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--cream);
+    letter-spacing: 1px;
+    margin-top: 2px;
+  }
+  .reveal .result {
+    font-size: 28px;
+    margin-top: 6px;
+    letter-spacing: 2px;
+  }
+  .reveal .result.bad { color: var(--red); }
+  .reveal .result.ok { color: var(--gold); }
+  .reveal .result.good { color: var(--green); }
+  .reveal .detail {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--cream);
+    opacity: 0.75;
+    margin-top: 4px;
+    letter-spacing: 0.5px;
+    line-height: 1.5;
+  }
+
+  .swing-btn {
+    position: absolute;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--gold) 0%, var(--gold-dim) 100%);
+    border: 4px solid var(--black);
+    box-shadow:
+      0 0 0 2px var(--gold),
+      0 6px 0 rgba(0,0,0,0.5);
+    color: var(--black);
+    font-family: 'Bowlby One SC', serif;
+    font-size: 20px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    z-index: 20;
+    transition: transform 0.05s, box-shadow 0.05s;
+  }
+  .swing-btn:active {
+    transform: translateX(-50%) translateY(4px);
+    box-shadow:
+      0 0 0 2px var(--gold),
+      0 2px 0 rgba(0,0,0,0.5);
+  }
+  .swing-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .footer-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 8px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--gold-dim);
+    letter-spacing: 1.5px;
+    z-index: 30;
+    pointer-events: none;
+  }
+
+  .next-btn {
+    background: transparent;
+    border: 1.5px solid var(--gold);
+    color: var(--gold);
+    padding: 8px 18px;
+    font-family: 'Bowlby One SC', serif;
+    font-size: 13px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: all 0.15s;
+  }
+  .next-btn:hover, .next-btn:active {
+    background: var(--gold);
+    color: var(--black);
+  }
+
+  .guess-prompt {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--gold);
+    letter-spacing: 2.5px;
+    text-align: center;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 15;
+    line-height: 1.6;
+  }
+  .guess-prompt.show { opacity: 0.95; }
+
+  .status {
+    position: absolute;
+    top: 38%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--gold-dim);
+    letter-spacing: 3px;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 15;
+  }
+  .status.show { opacity: 1; }
+
+  @keyframes flash {
+    0% { opacity: 0.35; }
+    100% { opacity: 0; }
+  }
+  .swing-flash {
+    position: absolute;
+    inset: 0;
+    background: var(--cream);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 50;
+  }
+  .swing-flash.go { animation: flash 0.12s ease-out; }
+
+  /* Bat — held over back shoulder by RHB stance, barrel up */
+  .bat {
+    position: absolute;
+    bottom: 18%;
+    right: 10%;
+    width: 120px;
+    height: 16px;
+    transform-origin: 92% 50%;
+    transform: rotate(-70deg);
+    z-index: 8;
+    pointer-events: none;
+    opacity: 0.95;
+  }
+  .bat svg { width: 100%; height: 100%; display: block; filter: drop-shadow(2px 3px 5px rgba(0,0,0,0.7)); }
+  @keyframes swingArc {
+    0%   { transform: rotate(-70deg); }
+    20%  { transform: rotate(-50deg); }
+    45%  { transform: rotate(20deg); }
+    70%  { transform: rotate(120deg); }
+    100% { transform: rotate(180deg); }
+  }
+  .bat.swinging { animation: swingArc 0.26s cubic-bezier(0.45, 0.0, 0.25, 1) forwards; }
+  .bat.reset { animation: none; transform: rotate(-70deg); transition: transform 0.45s ease-out; }
+
+  /* Batter hands — small grip near bat handle for visual anchor */
+  .hands {
+    position: absolute;
+    bottom: 17%;
+    right: 9%;
+    width: 22px;
+    height: 22px;
+    background: radial-gradient(circle at 40% 35%, #1a1208 0%, #050505 100%);
+    border-radius: 50%;
+    z-index: 9;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.6);
+    pointer-events: none;
+  }
+
+  /* Bat swoosh trail */
+  .swoosh {
+    position: absolute;
+    bottom: 12%;
+    right: 6%;
+    width: 220px;
+    height: 220px;
+    pointer-events: none;
+    z-index: 7;
+    opacity: 0;
+  }
+  .swoosh svg { width: 100%; height: 100%; }
+  @keyframes swoosh-go {
+    0%   { opacity: 0; }
+    30%  { opacity: 0.55; }
+    100% { opacity: 0; }
+  }
+  .swoosh.go { animation: swoosh-go 0.32s ease-out; }
+
+  /* Pitcher delivery — sequenced phases */
+  .pitcher .leg-front,
+  .pitcher .leg-back,
+  .pitcher .torso,
+  .pitcher .glove-arm,
+  .pitcher .throw-arm,
+  .pitcher .forearm {
+    transform-box: fill-box;
+  }
+
+  /* Leg lift: front leg comes up to peak knee lift around 35-45%, then strides */
+  @keyframes legLift {
+    0%   { transform: rotate(0deg) translateY(0); }
+    35%  { transform: rotate(-30deg) translate(2px, -8px); }
+    50%  { transform: rotate(-15deg) translate(0, -4px); }
+    75%  { transform: rotate(15deg) translate(-4px, 4px); }
+    100% { transform: rotate(20deg) translate(-6px, 6px); }
+  }
+  .pitcher .leg-front { transform-origin: 60% 0%; }
+  .pitcher.winding .leg-front {
+    animation: legLift var(--windup-dur, 1000ms) cubic-bezier(0.5, 0.0, 0.5, 1) forwards;
+  }
+
+  /* Back leg drives — slight bend then push */
+  @keyframes backLegDrive {
+    0%   { transform: scaleY(1) translateY(0); }
+    40%  { transform: scaleY(0.94) translateY(2px); }
+    75%  { transform: scaleY(1.02) translateY(-1px); }
+    100% { transform: scaleY(1) translateY(0); }
+  }
+  .pitcher .leg-back { transform-origin: 50% 0%; }
+  .pitcher.winding .leg-back {
+    animation: backLegDrive var(--windup-dur, 1000ms) ease-in-out forwards;
+  }
+
+  /* Torso: coil back, then rotate/tilt forward through release */
+  @keyframes torsoCoil {
+    0%   { transform: rotate(0deg) translate(0, 0); }
+    30%  { transform: rotate(-8deg) translate(2px, -2px); }
+    55%  { transform: rotate(-4deg) translate(0, 0); }
+    80%  { transform: rotate(12deg) translate(-3px, 2px); }
+    100% { transform: rotate(18deg) translate(-5px, 4px); }
+  }
+  .pitcher .torso { transform-origin: 50% 95%; }
+  .pitcher.winding .torso {
+    animation: torsoCoil var(--windup-dur, 1000ms) cubic-bezier(0.4, 0.0, 0.4, 1) forwards;
+  }
+
+  /* Glove arm: held high during coil, tucks to chest at release */
+  @keyframes gloveArm {
+    0%   { transform: rotate(0deg); }
+    30%  { transform: rotate(-25deg) translate(-2px, -4px); }
+    55%  { transform: rotate(-15deg) translate(-1px, -2px); }
+    80%  { transform: rotate(25deg) translate(4px, 6px); }
+    100% { transform: rotate(35deg) translate(6px, 8px); }
+  }
+  .pitcher .glove-arm { transform-origin: 50% 10%; }
+  .pitcher.winding .glove-arm {
+    animation: gloveArm var(--windup-dur, 1000ms) cubic-bezier(0.4, 0.0, 0.5, 1) forwards;
+  }
+
+  /* Throwing arm: coil back high, then whip forward and down through release */
+  @keyframes throwArm {
+    0%   { transform: rotate(0deg); }
+    25%  { transform: rotate(-35deg) translate(2px, -3px); }
+    50%  { transform: rotate(-55deg) translate(4px, -6px); }
+    75%  { transform: rotate(20deg) translate(0, 0); }
+    90%  { transform: rotate(55deg) translate(-2px, 3px); }
+    100% { transform: rotate(75deg) translate(-3px, 5px); }
+  }
+  .pitcher .throw-arm { transform-origin: 0% 0%; }
+  .pitcher.winding .throw-arm {
+    animation: throwArm var(--windup-dur, 1000ms) cubic-bezier(0.3, 0.0, 0.5, 1) forwards;
+  }
+
+  /* Forearm whip — secondary motion for a snappier release */
+  @keyframes forearmWhip {
+    0%   { transform: rotate(0deg); }
+    50%  { transform: rotate(-25deg); }
+    75%  { transform: rotate(15deg); }
+    100% { transform: rotate(30deg); }
+  }
+  .pitcher .forearm { transform-origin: 50% 0%; }
+  .pitcher.winding .forearm {
+    animation: forearmWhip var(--windup-dur, 1000ms) cubic-bezier(0.3, 0.0, 0.4, 1) forwards;
+  }
+
+  /* Ball in hand disappears at release point */
+  .ball-in-hand { opacity: 1; transition: opacity 0.05s; }
+  .pitcher.released .ball-in-hand { opacity: 0; }
+
+  .intro {
+    position: absolute;
+    inset: 0;
+    background: rgba(10,10,10,0.97);
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+    text-align: center;
+    overflow-y: auto;
+  }
+  .intro.hidden { display: none; }
+  .intro h1 {
+    font-family: 'Bowlby One SC', serif;
+    font-size: 36px;
+    color: var(--gold);
+    line-height: 0.95;
+    margin-bottom: 6px;
+    letter-spacing: 1px;
+  }
+  .intro .sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--cream);
+    letter-spacing: 3px;
+    opacity: 0.7;
+    margin-bottom: 22px;
+  }
+  .intro .brief {
+    max-width: 340px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--cream);
+    opacity: 0.88;
+    margin-bottom: 20px;
+  }
+  .intro .brief strong { color: var(--gold); font-weight: 700; }
+  .intro .rules {
+    max-width: 340px;
+    text-align: left;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.7;
+    color: var(--cream);
+    opacity: 0.85;
+    margin-bottom: 24px;
+    padding: 14px 16px;
+    border: 1px solid var(--gold-dim);
+  }
+  .rules .step {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .rules .step:last-child { margin-bottom: 0; }
+  .rules .num {
+    color: var(--gold);
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .intro .start {
+    background: var(--gold);
+    color: var(--black);
+    border: none;
+    padding: 14px 36px;
+    font-family: 'Bowlby One SC', serif;
+    font-size: 18px;
+    letter-spacing: 2px;
+    cursor: pointer;
+  }
+  .intro .start:active { transform: translateY(2px); }
+</style>
+</head>
+<body>
+<div id="game">
+  <header>
+    <div class="title">
+      FACING SKENES
+      <small>OCULAR REACTION TEST</small>
+    </div>
+    <div class="scoreboard">
+      <div class="line"><span class="label">PA</span><span class="val" id="pa">0</span></div>
+      <div class="line"><span class="label">CONTACT</span><span class="val" id="contact">0</span></div>
+      <div class="line"><span class="label">WHIFF%</span><span class="val" id="whiff">—</span></div>
+    </div>
+  </header>
+
+  <div class="field" id="field">
+    <div class="mound"></div>
+    <div class="pitcher" id="pitcher">
+      <svg viewBox="0 0 90 110" xmlns="http://www.w3.org/2000/svg">
+        <ellipse cx="45" cy="106" rx="22" ry="2.5" fill="#000" opacity="0.5"/>
+
+        <!-- Back leg (planted) -->
+        <g class="leg-back">
+          <path d="M 48 60 L 52 95 L 58 102 L 56 104 L 48 100 L 44 65 Z" fill="#0a0a0a"/>
+        </g>
+
+        <!-- Front leg (lifts and strides) -->
+        <g class="leg-front">
+          <path d="M 42 58 L 38 88 L 30 100 L 34 103 L 44 92 L 48 62 Z" fill="#0a0a0a"/>
+        </g>
+
+        <!-- Torso (tilts forward during delivery) -->
+        <g class="torso">
+          <!-- main body -->
+          <path d="M 38 28 L 56 28 L 58 62 L 36 62 Z" fill="#1a1208"/>
+          <!-- jersey gold accent stripe (Pirates) -->
+          <rect x="45" y="32" width="3" height="26" fill="#fdb827" opacity="0.75"/>
+          <!-- number -->
+          <text x="46.5" y="48" font-family="Bowlby One SC, serif" font-size="9" fill="#fdb827" text-anchor="middle" opacity="0.9">30</text>
+          <!-- shoulder definition -->
+          <ellipse cx="40" cy="30" rx="4" ry="3" fill="#0a0a0a"/>
+          <ellipse cx="54" cy="30" rx="4" ry="3" fill="#0a0a0a"/>
+
+          <!-- Head + cap -->
+          <g class="head">
+            <circle cx="47" cy="20" r="6.5" fill="#1a1208"/>
+            <!-- cap crown -->
+            <path d="M 40 18 Q 47 11 54 18 L 54 21 L 40 21 Z" fill="#0a0a0a"/>
+            <!-- cap brim -->
+            <path d="M 38 21 L 56 21 L 56 23 L 38 23 Z" fill="#0a0a0a"/>
+            <!-- gold "P" -->
+            <text x="47" y="19.5" font-family="Bowlby One SC, serif" font-size="5" fill="#fdb827" text-anchor="middle">P</text>
+          </g>
+
+          <!-- Glove arm (front, holds glove early then tucks) -->
+          <g class="glove-arm">
+            <path d="M 38 32 L 28 44 L 32 48 L 42 36 Z" fill="#1a1208"/>
+            <ellipse cx="28" cy="46" rx="4.5" ry="5" fill="#3a2a18"/>
+            <ellipse cx="28" cy="46" rx="2.5" ry="3" fill="#1a1208"/>
+          </g>
+
+          <!-- Throwing arm (animates through delivery) -->
+          <g class="throw-arm">
+            <!-- upper arm -->
+            <path d="M 54 32 L 58 32 L 62 50 L 58 50 Z" fill="#1a1208"/>
+            <!-- forearm + hand + ball -->
+            <g class="forearm">
+              <path d="M 58 48 L 62 48 L 66 64 L 62 64 Z" fill="#1a1208"/>
+              <circle cx="64" cy="66" r="3" fill="#f0e4cc" class="ball-in-hand"/>
+            </g>
+          </g>
+        </g>
+      </svg>
+    </div>
+
+    <div class="zone-wrap" id="zoneWrap">
+      <div class="zone-halo"></div>
+      <div class="zone-grid" id="zoneGrid">
+        <div class="cell" data-col="0" data-row="0"></div>
+        <div class="cell" data-col="1" data-row="0"></div>
+        <div class="cell" data-col="2" data-row="0"></div>
+        <div class="cell" data-col="0" data-row="1"></div>
+        <div class="cell" data-col="1" data-row="1"></div>
+        <div class="cell" data-col="2" data-row="1"></div>
+        <div class="cell" data-col="0" data-row="2"></div>
+        <div class="cell" data-col="1" data-row="2"></div>
+        <div class="cell" data-col="2" data-row="2"></div>
+      </div>
+      <div class="actual-marker" id="actualMarker"></div>
+    </div>
+
+    <div class="plate"></div>
+
+    <div class="backstop">
+      <svg viewBox="0 0 220 80" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMax meet">
+        <!-- Umpire silhouette (back, slightly crouched, behind catcher) -->
+        <g opacity="0.55">
+          <!-- ump head + mask -->
+          <ellipse cx="110" cy="14" rx="11" ry="11" fill="#1a1208"/>
+          <rect x="101" y="10" width="18" height="10" fill="#0a0a0a"/>
+          <!-- ump shoulders/chest protector wide -->
+          <path d="M 80 25 Q 110 18 140 25 L 148 55 L 72 55 Z" fill="#1a1208"/>
+        </g>
+        <!-- Catcher (in front of ump, crouched lower, narrower) -->
+        <g>
+          <!-- catcher's mask/helmet -->
+          <ellipse cx="110" cy="32" rx="9" ry="9.5" fill="#0a0a0a"/>
+          <!-- mask bars (gold accent) -->
+          <line x1="103" y1="30" x2="117" y2="30" stroke="#fdb827" stroke-width="0.6" opacity="0.7"/>
+          <line x1="103" y1="33" x2="117" y2="33" stroke="#fdb827" stroke-width="0.6" opacity="0.7"/>
+          <line x1="103" y1="36" x2="117" y2="36" stroke="#fdb827" stroke-width="0.6" opacity="0.7"/>
+          <!-- chest/shoulders -->
+          <path d="M 90 42 Q 110 38 130 42 L 135 65 L 85 65 Z" fill="#0a0a0a"/>
+          <!-- gold jersey stripe -->
+          <rect x="108" y="44" width="4" height="18" fill="#fdb827" opacity="0.6"/>
+          <!-- knees -->
+          <ellipse cx="92" cy="68" rx="7" ry="6" fill="#0a0a0a"/>
+          <ellipse cx="128" cy="68" rx="7" ry="6" fill="#0a0a0a"/>
+          <!-- Glove (raised, target) -->
+          <ellipse cx="135" cy="48" rx="9" ry="8" fill="#3a2410"/>
+          <ellipse cx="135" cy="48" rx="6" ry="5.5" fill="#1a1208"/>
+          <ellipse cx="135" cy="48" rx="3" ry="2.8" fill="#0a0a0a"/>
+        </g>
+      </svg>
+    </div>
+
+    <div class="ball-trail" id="trailGhost1"></div>
+    <div class="ball-trail" id="trailGhost2"></div>
+    <div class="ball-trail" id="trailGhost3"></div>
+    <div class="ball" id="ball"></div>
+
+    <div class="status" id="status">SET</div>
+
+    <div class="reveal" id="reveal">
+      <div class="type" id="rType"></div>
+      <div class="velo" id="rVelo"></div>
+      <div class="result" id="rResult"></div>
+      <div class="detail" id="rDetail"></div>
+    </div>
+
+    <div class="swoosh" id="swoosh">
+      <svg viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 190 30 Q 110 70 30 180" stroke="#f4ead5" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.5"/>
+        <path d="M 195 50 Q 120 90 45 185" stroke="#f4ead5" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.3"/>
+      </svg>
+    </div>
+
+    <div class="hands"></div>
+    <div class="bat" id="bat">
+      <svg viewBox="0 0 140 18" xmlns="http://www.w3.org/2000/svg">
+        <!-- bat barrel (thick end) to handle (thin end) -->
+        <defs>
+          <linearGradient id="batGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#4a2c12"/>
+            <stop offset="50%" stop-color="#8b5a2b"/>
+            <stop offset="85%" stop-color="#c8975a"/>
+            <stop offset="100%" stop-color="#1a0f08"/>
+          </linearGradient>
+        </defs>
+        <!-- knob -->
+        <ellipse cx="134" cy="9" rx="4" ry="6" fill="#1a0f08"/>
+        <!-- handle to barrel -->
+        <path d="M 5 6 L 100 4 L 130 5 L 130 13 L 100 14 L 5 12 Z" fill="url(#batGrad)"/>
+        <!-- barrel end cap -->
+        <ellipse cx="5" cy="9" rx="2" ry="3.5" fill="#3a2210"/>
+        <!-- highlight stripe -->
+        <path d="M 10 7 L 125 6 L 125 8 L 10 9 Z" fill="#d4a874" opacity="0.4"/>
+      </svg>
+    </div>
+
+    <div class="swing-flash" id="flash"></div>
+
+    <div class="footer-bar">
+      <span id="pitchNum">PITCH 01</span>
+      <button class="next-btn" id="nextBtn" style="display:none;">NEXT</button>
+      <span id="hint">WAIT...</span>
+    </div>
+  </div>
+
+  <div class="intro" id="intro">
+    <h1>FACING<br>SKENES</h1>
+    <div class="sub">A REACTION TEST</div>
+    <div class="brief">
+      Real velocities. Real flight times. Real chase rates. Skenes won't throw it down the middle. He locates.
+    </div>
+    <div class="rules">
+      <div class="step"><span class="num">1.</span><span>Watch the pitcher. The ball will come fast.</span></div>
+      <div class="step"><span class="num">2.</span><span><strong style="color:var(--gold)">TAP THE ZONE CELL</strong> where you think the ball will be — when you think it'll be there.</span></div>
+      <div class="step"><span class="num">3.</span><span>One tap = both location AND timing.</span></div>
+      <div class="step"><span class="num">4.</span><span>Don't tap if it's a ball. That's a chase.</span></div>
+    </div>
+    <button class="start" id="startBtn">STEP IN</button>
+  </div>
+</div>
+
+<script>
+/*
+  SKENES SIM — REAL TIMING + LOCATION
+
+  Pitch arsenal (Skenes 2024-25 Statcast approximations):
+    FB    99 mph   395ms flight
+    SPLNK 95 mph   412ms
+    SLD   88 mph   446ms
+    CURV  84 mph   466ms
+    CHG   90 mph   436ms
+
+  Location distribution:
+    ~48% in zone (he's around the zone)
+    ~52% out of zone (with chase potential on splinker/slider especially)
+
+  Each pitch is mapped to a 5x5 grid where 3x3 center = strike zone.
+  Anything outside center 3x3 = ball.
+
+  Contact requires:
+    1) You sat on a cell within ±1 cell of where the ball actually went
+       (only counts if ball was IN ZONE — chasing = whiff)
+    2) Your swing timing is within ±25ms of arrival
+
+  Barrel = exact cell + <8ms timing
+  Contact = ±1 cell + <18ms timing
+  Foul = ±1 cell + <40ms timing, OR exact cell + worse timing
+  Whiff = everything else (including chases)
+*/
+
+// Pitch type weights + tendency to be in-zone
+const PITCHES = [
+  { name: "FASTBALL",  velo: 99, flightMs: 395, weight: 0.45, inZoneRate: 0.55 },
+  { name: "SPLINKER",  velo: 95, flightMs: 412, weight: 0.20, inZoneRate: 0.40 },
+  { name: "SLIDER",    velo: 88, flightMs: 446, weight: 0.18, inZoneRate: 0.42 },
+  { name: "CURVEBALL", velo: 84, flightMs: 466, weight: 0.10, inZoneRate: 0.50 },
+  { name: "CHANGEUP",  velo: 90, flightMs: 436, weight: 0.07, inZoneRate: 0.45 },
+];
+
+// Where each pitch tends to go when located (col,row probabilities for in-zone)
+// Grid: col 0=inside, 1=middle, 2=outside (RHB perspective); row 0=up, 1=middle, 2=down
+const PITCH_PLACEMENT = {
+  FASTBALL:  [[0.10,0.10,0.15],[0.10,0.05,0.15],[0.08,0.10,0.17]], // mostly up/away
+  SPLINKER:  [[0.05,0.05,0.05],[0.10,0.10,0.10],[0.15,0.20,0.20]], // down
+  SLIDER:    [[0.05,0.05,0.10],[0.08,0.10,0.20],[0.10,0.12,0.20]], // down/away
+  CURVEBALL: [[0.05,0.05,0.05],[0.10,0.10,0.10],[0.18,0.22,0.15]], // down
+  CHANGEUP:  [[0.05,0.05,0.05],[0.10,0.10,0.10],[0.15,0.20,0.20]], // down
+};
+
+// Out-of-zone tendencies — extended grid 5x5, but only the 16 outer cells used
+// Use a polar-like distribution: most chases are below or off-corners
+const OOZ_PLACEMENTS = ['down','down-away','away','down-in','up-away','in','up'];
+
+// State
+let pa = 0;
+let contact = 0;
+let solid = 0;
+let pitchActive = false;
+let pitchInFlight = false;
+let releaseTime = 0;
+let arrivalTime = 0;
+let swingTime = 0;
+let currentPitch = null;
+let currentLocation = null;
+let rafId = null;
+let pitchTimeoutId = null;
+
+const $ = id => document.getElementById(id);
+const field = $('field');
+const ball = $('ball');
+const nextBtn = $('nextBtn');
+const status = $('status');
+const reveal = $('reveal');
+const flash = $('flash');
+const hint = $('hint');
+const zoneGrid = $('zoneGrid');
+const zoneWrap = $('zoneWrap');
+const actualMarker = $('actualMarker');
+const bat = $('bat');
+const swoosh = $('swoosh');
+const pitcher = $('pitcher');
+const trailGhost1 = $('trailGhost1');
+const trailGhost2 = $('trailGhost2');
+const trailGhost3 = $('trailGhost3');
+
+function pickPitch() {
+  const r = Math.random();
+  let acc = 0;
+  for (const p of PITCHES) {
+    acc += p.weight;
+    if (r <= acc) return p;
+  }
+  return PITCHES[0];
+}
+
+function pickLocation(pitch) {
+  const inZone = Math.random() < pitch.inZoneRate;
+  if (inZone) {
+    // Pick a cell using placement distribution
+    const placement = PITCH_PLACEMENT[pitch.name];
+    let total = 0;
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) total += placement[r][c];
+    let r = Math.random() * total;
+    let acc = 0;
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        acc += placement[row][col];
+        if (r <= acc) {
+          // Add some jitter within cell
+          const x = (col + 0.3 + Math.random() * 0.4) / 3;
+          const y = (row + 0.3 + Math.random() * 0.4) / 3;
+          return { col, row, inZone: true, x, y };
+        }
+      }
+    }
+  } else {
+    // Out of zone — pick a direction
+    // Skenes tends low/away especially with splinker/slider/curve
+    const downBiased = ['SPLINKER','SLIDER','CURVEBALL','CHANGEUP'].includes(pitch.name);
+    let x, y;
+    if (downBiased && Math.random() < 0.65) {
+      // Below zone or down-away
+      y = 1.05 + Math.random() * 0.20;
+      x = 0.3 + Math.random() * 0.9; // could be down-in to down-away
+    } else {
+      // Various out-of-zone
+      const side = Math.random();
+      if (side < 0.3) {
+        // Off outside corner
+        x = 1.05 + Math.random() * 0.15;
+        y = 0.2 + Math.random() * 0.7;
+      } else if (side < 0.5) {
+        // Inside (off-plate inside)
+        x = -0.15 - Math.random() * 0.15;
+        y = 0.2 + Math.random() * 0.7;
+      } else if (side < 0.75) {
+        // Above zone
+        x = 0.2 + Math.random() * 0.6;
+        y = -0.15 - Math.random() * 0.15;
+      } else {
+        // Below zone
+        x = 0.2 + Math.random() * 0.6;
+        y = 1.05 + Math.random() * 0.20;
+      }
+    }
+    return { col: -1, row: -1, inZone: false, x, y };
+  }
+}
+
+function resetVisuals() {
+  ball.style.opacity = '0';
+  trailGhost1.style.opacity = '0';
+  trailGhost2.style.opacity = '0';
+  trailGhost3.style.opacity = '0';
+  reveal.classList.remove('show');
+  status.classList.remove('show');
+  actualMarker.classList.remove('show');
+  nextBtn.style.display = 'none';
+  [...zoneGrid.children].forEach(c => c.classList.remove('guess-active'));
+  pitchActive = false;
+  pitchInFlight = false;
+
+  // Reset bat to rest position
+  bat.classList.remove('swinging');
+  bat.classList.add('reset');
+  swoosh.classList.remove('go');
+
+  // Reset pitcher
+  pitcher.classList.remove('winding');
+  pitcher.classList.remove('released');
+
+  // Reset camera
+  field.classList.remove('shake');
+}
+
+function triggerBatSwing() {
+  bat.classList.remove('reset');
+  bat.classList.remove('swinging');
+  void bat.offsetWidth;
+  bat.classList.add('swinging');
+
+  swoosh.classList.remove('go');
+  void swoosh.offsetWidth;
+  swoosh.classList.add('go');
+}
+
+function startPitch() {
+  resetVisuals();
+  pa++;
+  $('pa').textContent = pa;
+  $('pitchNum').textContent = 'PITCH ' + String(pa).padStart(2, '0');
+
+  currentPitch = pickPitch();
+  currentLocation = pickLocation(currentPitch);
+
+  status.textContent = 'SET';
+  status.classList.add('show');
+  hint.textContent = 'WAIT...';
+  pitchActive = true;
+
+  setTimeout(() => {
+    if (!pitchActive) return;
+    status.classList.remove('show');
+
+    // Randomized windup duration — varies tempo so you can't metronome-time it
+    const windupDur = 800 + Math.random() * 900; // 800-1700ms
+    pitcher.style.setProperty('--windup-dur', windupDur + 'ms');
+
+    // Trigger windup
+    pitcher.classList.remove('winding');
+    pitcher.classList.remove('released');
+    void pitcher.offsetWidth;
+    pitcher.classList.add('winding');
+
+    // Ball releases when throwing arm reaches forward extension (~78% through windup)
+    const releaseDelay = windupDur * 0.78;
+    pitchTimeoutId = setTimeout(() => {
+      if (!pitchActive) return;
+      animatePitch();
+    }, releaseDelay);
+  }, 350);
+}
+
+function onCellClick(e) {
+  if (!pitchActive) return;
+  const cell = e.currentTarget;
+  const col = parseInt(cell.dataset.col, 10);
+  const row = parseInt(cell.dataset.row, 10);
+
+  // Mark guess
+  [...zoneGrid.children].forEach(c => c.classList.remove('guess-active'));
+  cell.classList.add('guess-active');
+
+  // If pitch hasn't been released yet, this is a premature swing
+  if (!pitchInFlight) {
+    pitchActive = false;
+    if (pitchTimeoutId) clearTimeout(pitchTimeoutId);
+    finishEarlySwing({ col, row });
+    return;
+  }
+
+  // Pitch is in flight — capture swing timing
+  resolveSwing({ col, row });
+}
+
+function finishEarlySwing(guess) {
+  triggerBatSwing();
+  flash.classList.remove('go');
+  void flash.offsetWidth;
+  flash.classList.add('go');
+
+  // Show where the pitch would have gone
+  showActualMarker();
+  finishResult(
+    currentPitch.name,
+    currentPitch.velo + ' MPH',
+    'SWING & MISS',
+    'bad',
+    'WAY EARLY — BALL NOT RELEASED'
+  );
+}
+
+function animatePitch() {
+  const fieldRect = field.getBoundingClientRect();
+  const zoneRect = zoneWrap.getBoundingClientRect();
+  const fieldX = zoneRect.left - fieldRect.left;
+  const fieldY = zoneRect.top - fieldRect.top;
+
+  // Ball starts at pitcher's release point (right of mound center, near throwing hand)
+  const pitcherRect = pitcher.getBoundingClientRect();
+  const startX = (pitcherRect.left - fieldRect.left) + pitcherRect.width * 0.72;
+  const startY = (pitcherRect.top - fieldRect.top) + pitcherRect.height * 0.45;
+
+  const endX = fieldX + currentLocation.x * zoneRect.width;
+  const endY = fieldY + currentLocation.y * zoneRect.height;
+
+  const startSize = 3;   // tiny at release — barely visible
+  const endSize = 26;    // explodes as it arrives
+
+  releaseTime = performance.now();
+  arrivalTime = releaseTime + currentPitch.flightMs;
+
+  // Hide ball in pitcher's hand
+  pitcher.classList.add('released');
+
+  ball.style.opacity = '1';
+  pitchInFlight = true;
+  hint.textContent = 'TAP ZONE';
+
+  // Camera shake on release
+  field.classList.remove('shake');
+  void field.offsetWidth;
+  field.classList.add('shake');
+
+  // Trail buffer — record recent positions for motion blur effect
+  const trail = [trailGhost1, trailGhost2, trailGhost3];
+  trail.forEach(t => { t.style.opacity = '0'; });
+  const trailHistory = [];
+
+  function frame(now) {
+    if (!pitchActive) return;
+    const elapsed = now - releaseTime;
+    const t = Math.min(elapsed / currentPitch.flightMs, 1);
+
+    // Movement that breaks late (after ~60% of flight)
+    let breakFactor = 0;
+    if (t > 0.55) breakFactor = ((t - 0.55) / 0.45) ** 2;
+
+    let breakX = 0, breakY = 0;
+    if (currentPitch.name === 'SLIDER') breakX = -fieldRect.width * 0.04 * breakFactor;
+    else if (currentPitch.name === 'CURVEBALL') breakY = fieldRect.height * 0.04 * breakFactor;
+    else if (currentPitch.name === 'CHANGEUP') { breakX = fieldRect.width * 0.015 * breakFactor; breakY = fieldRect.height * 0.02 * breakFactor; }
+    else if (currentPitch.name === 'SPLINKER') breakY = fieldRect.height * 0.025 * breakFactor;
+
+    const x = startX + (endX - startX) * t + breakX;
+    const y = startY + (endY - startY) * t + breakY;
+
+    // Angular size growth: ball appears small for most of flight, explodes at end
+    // Approximates 1/(distance) where distance shrinks linearly with t
+    // Use t^3.5 weighted curve — stays tiny until ~70%, then balloons
+    const sizeT = Math.pow(t, 2.8) * 0.85 + t * 0.15;
+    const size = startSize + (endSize - startSize) * sizeT;
+
+    ball.style.width = size + 'px';
+    ball.style.height = size + 'px';
+    ball.style.left = x + 'px';
+    ball.style.top = y + 'px';
+    ball.style.transform = 'translate(-50%, -50%)';
+
+    // Update trail — only show after ~30% (when ball is moving enough to streak)
+    trailHistory.unshift({ x, y, size });
+    if (trailHistory.length > 3) trailHistory.length = 3;
+    if (t > 0.25) {
+      trailHistory.forEach((p, i) => {
+        const g = trail[i];
+        if (!g) return;
+        const fade = (0.5 - i * 0.15) * Math.min((t - 0.25) * 3, 1);
+        g.style.opacity = fade.toFixed(2);
+        g.style.width = (p.size * 0.85) + 'px';
+        g.style.height = (p.size * 0.85) + 'px';
+        g.style.left = p.x + 'px';
+        g.style.top = p.y + 'px';
+        g.style.transform = 'translate(-50%, -50%)';
+      });
+    }
+
+    if (t < 1 && pitchActive) {
+      rafId = requestAnimationFrame(frame);
+    } else if (pitchActive) {
+      finishPitch();
+    }
+  }
+  rafId = requestAnimationFrame(frame);
+}
+
+function startPitchAnimation() {
+  // kept as a no-op placeholder; flow now handled in startPitch()
+}
+
+function resolveSwing(guessCell) {
+  const now = performance.now();
+  swingTime = now;
+  pitchActive = false;
+  pitchInFlight = false;
+  if (rafId) cancelAnimationFrame(rafId);
+
+  // Bat swing animation
+  triggerBatSwing();
+
+  flash.classList.remove('go');
+  void flash.offsetWidth;
+  flash.classList.add('go');
+
+  const offsetMs = swingTime - arrivalTime;
+  const absOff = Math.abs(offsetMs);
+
+  // Location accuracy — vertical plane must match (bat sweeps horizontally)
+  // Row mismatch = bat sweeps above or below the ball = no contact
+  let rowMatch = false;
+  let colDiff = 99;
+  if (currentLocation.inZone && guessCell) {
+    rowMatch = (guessCell.row === currentLocation.row);
+    colDiff = Math.abs(guessCell.col - currentLocation.col);
+  }
+  const locExact = rowMatch && colDiff === 0;
+  const locOk = rowMatch && colDiff <= 1;
+
+  let result, cls, detail;
+
+  if (!currentLocation.inZone) {
+    result = 'CHASE WHIFF';
+    cls = 'bad';
+    detail = 'BALL OUT OF ZONE — SHOULDN\'T HAVE SWUNG';
+  } else if (!rowMatch) {
+    // Wrong vertical plane — swung over or under it
+    result = 'SWING & MISS';
+    cls = 'bad';
+    const guessLabels = locationLabel(guessCell.col, guessCell.row);
+    const actualLabels = locationLabel(currentLocation.col, currentLocation.row);
+    const planeError = guessCell.row < currentLocation.row ? 'SWUNG OVER IT' : 'SWUNG UNDER IT';
+    detail = `${planeError}\nGUESSED ${guessLabels} — PITCH ${actualLabels}`;
+  } else if (!locOk) {
+    // Right plane, but too far off horizontally
+    result = 'SWING & MISS';
+    cls = 'bad';
+    const guessLabels = locationLabel(guessCell.col, guessCell.row);
+    const actualLabels = locationLabel(currentLocation.col, currentLocation.row);
+    detail = `RIGHT PLANE, WRONG SPOT\nGUESSED ${guessLabels} — PITCH ${actualLabels}`;
+  } else if (absOff <= 8 && locExact) {
+    result = 'BARREL';
+    cls = 'good';
+    contact++; solid++;
+    detail = `${absOff.toFixed(0)}MS OFF • DEAD CENTER`;
+  } else if (absOff <= 18) {
+    result = 'CONTACT';
+    cls = 'ok';
+    contact++;
+    detail = `${absOff.toFixed(0)}MS ${offsetMs < 0 ? 'EARLY' : 'LATE'} • ${locExact ? 'ON THE SPOT' : 'ADJACENT'}`;
+  } else if (absOff <= 40) {
+    result = 'FOUL';
+    cls = 'ok';
+    detail = `${absOff.toFixed(0)}MS ${offsetMs < 0 ? 'EARLY' : 'LATE'} • GLANCING BLOW`;
+  } else {
+    result = 'SWING & MISS';
+    cls = 'bad';
+    detail = `TIMING ${absOff.toFixed(0)}MS ${offsetMs < 0 ? 'EARLY' : 'LATE'}`;
+  }
+
+  showActualMarker();
+  finishResult(currentPitch.name, currentPitch.velo + ' MPH', result, cls, detail);
+}
+
+function locationLabel(col, row) {
+  const v = row === 0 ? 'UP' : row === 1 ? 'MID' : 'DOWN';
+  const h = col === 0 ? 'IN' : col === 1 ? 'MID' : 'AWAY';
+  if (col === 1 && row === 1) return 'MIDDLE';
+  if (row === 1) return h;
+  if (col === 1) return v;
+  return v + '-' + h;
+}
+
+function showActualMarker() {
+  // Place marker at the actual location relative to zone-wrap
+  const x = currentLocation.x * 100;
+  const y = currentLocation.y * 100;
+  actualMarker.style.left = x + '%';
+  actualMarker.style.top = y + '%';
+  actualMarker.classList.add('show');
+}
+
+function finishPitch() {
+  pitchActive = false;
+  pitchInFlight = false;
+  if (rafId) cancelAnimationFrame(rafId);
+
+  let result, cls, detail;
+  if (currentLocation.inZone) {
+    result = 'CALLED STRIKE';
+    cls = 'bad';
+    detail = `${locationLabel(currentLocation.col, currentLocation.row)} — YOU FROZE`;
+  } else {
+    result = 'BALL';
+    cls = 'ok';
+    detail = 'GOOD TAKE — OUT OF ZONE';
+  }
+  showActualMarker();
+  finishResult(currentPitch.name, currentPitch.velo + ' MPH', result, cls, detail);
+}
+
+function finishResult(type, velo, result, cls, detail) {
+  $('rType').textContent = type;
+  $('rVelo').textContent = velo;
+  const rResult = $('rResult');
+  rResult.textContent = result;
+  rResult.className = 'result ' + cls;
+  $('rDetail').innerHTML = detail.replace(/\n/g, '<br>');
+  reveal.classList.add('show');
+
+  const whiffPct = pa > 0 ? Math.round(((pa - contact) / pa) * 100) : 0;
+  $('contact').textContent = contact;
+  $('whiff').textContent = pa > 0 ? whiffPct + '%' : '—';
+
+  nextBtn.style.display = 'block';
+  hint.textContent = '';
+}
+
+// Event listeners
+[...zoneGrid.children].forEach(cell => {
+  let handled = false;
+  cell.addEventListener('touchend', e => {
+    e.preventDefault();
+    handled = true;
+    onCellClick({ currentTarget: cell });
+    setTimeout(() => { handled = false; }, 400);
+  });
+  cell.addEventListener('click', e => {
+    if (handled) return;
+    onCellClick(e);
+  });
+});
+
+function handleNext(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  startPitch();
+}
+
+nextBtn.addEventListener('click', handleNext);
+nextBtn.addEventListener('touchend', handleNext);
+
+$('startBtn').addEventListener('click', () => {
+  $('intro').classList.add('hidden');
+  startPitch();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (!pitchActive && nextBtn.style.display === 'block') startPitch();
+  }
+});
+</script>
+</body>
+</html>
